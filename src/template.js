@@ -11,10 +11,25 @@ const SWITCHER = (text, open, className = '') => `
   <span class="slider round"></span>
 </label>
 `
+const NOTES_PANEL = ({ lang }) => `
+    <aside class="notes-sidebar" id="notes-sidebar">
+        <div class="notes-sidebar-header">
+            <div class="notes-sidebar-title">${SUPPORTED_LANG[lang].allNotes}</div>
+            <a class="opt-button notes-new-link" href="/">${SUPPORTED_LANG[lang].newNote}</a>
+        </div>
+        <div class="notes-sidebar-body">
+            <div class="notes-list-empty">${SUPPORTED_LANG[lang].emptyNotes}</div>
+            <div class="notes-list" id="notes-list"></div>
+        </div>
+    </aside>
+`
 const FOOTER = ({ lang, isEdit, updateAt, pw, mode, share }) => `
     <div class="footer">
         ${isEdit ? `
             <div class="opt">
+                <button class="opt-button opt-save">${SUPPORTED_LANG[lang].save}</button>
+                <span class="save-status is-saved">${SUPPORTED_LANG[lang].saved}</span>
+                <button class="opt-button opt-notes">${SUPPORTED_LANG[lang].notes}</button>
                 <button class="opt-button opt-pw">${pw ? SUPPORTED_LANG[lang].changePW : SUPPORTED_LANG[lang].setPW}</button>
                 ${SWITCHER('Markdown', mode === 'md', 'opt-mode')}
                 ${SWITCHER(SUPPORTED_LANG[lang].share, share, 'opt-share')}
@@ -48,18 +63,23 @@ const HTML = ({ lang, title, content, ext = {}, tips, isEdit, showPwPrompt }) =>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${title} — Cloud Notepad</title>
     <link href="${CDN_PREFIX}/favicon.ico" rel="shortcut icon" type="image/ico" />
-    <link href="${CDN_PREFIX}/css/app.min.css" rel="stylesheet" media="screen" />
+    <link href="${CDN_PREFIX}/css/app.css" rel="stylesheet" media="screen" />
+    ${ext.mode === 'md' ? '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css" />' : ''}
+    ${ext.mode === 'md' ? '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />' : ''}
 </head>
 <body>
-    <div class="note-container">
-        <div class="stack">
-            <div class="layer_1">
-                <div class="layer_2">
-                    <div class="layer_3">
-                        ${tips ? `<div class="tips">${tips}</div>` : ''}
-                        <textarea id="contents" class="contents ${isEdit ? '' : 'hide'}" spellcheck="true" placeholder="${SUPPORTED_LANG[lang].emptyPH}">${content}</textarea>
-                        ${(isEdit && ext.mode === 'md') ? '<div class="divide-line"></div>' : ''}
-                        ${tips || (isEdit && ext.mode !== 'md') ? '' : `<div id="preview-${ext.mode || 'plain'}" class="contents"></div>`}
+    <div class="note-container ${isEdit ? 'is-edit' : ''}">
+        ${isEdit ? NOTES_PANEL({ lang }) : ''}
+        <div class="editor-wrapper">
+            <div class="stack">
+                <div class="layer_1">
+                    <div class="layer_2">
+                        <div class="layer_3">
+                            ${tips ? `<div class="tips">${tips}</div>` : ''}
+                            <textarea id="contents" class="contents ${isEdit ? '' : 'hide'}" spellcheck="true" placeholder="${SUPPORTED_LANG[lang].emptyPH}">${content}</textarea>
+                            ${(isEdit && ext.mode === 'md') ? '<div class="divide-line"></div>' : ''}
+                            ${tips || (isEdit && ext.mode !== 'md') ? '' : `<div id="preview-${ext.mode || 'plain'}" class="contents markdown-preview"></div>`}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -70,8 +90,11 @@ const HTML = ({ lang, title, content, ext = {}, tips, isEdit, showPwPrompt }) =>
     ${FOOTER({ ...ext, isEdit, lang })}
     ${(ext.mode === 'md' || ext.share) ? `<script src="${CDN_PREFIX}/js/purify.min.js"></script>` : ''}
     ${ext.mode === 'md' ? `<script src="${CDN_PREFIX}/js/marked.min.js"></script>` : ''}
-    <script src="${CDN_PREFIX}/js/clip.min.js"></script>
-    <script src="${CDN_PREFIX}/js/app.min.js"></script>
+    ${ext.mode === 'md' ? '<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/highlight.min.js"></script>' : ''}
+    ${ext.mode === 'md' ? '<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>' : ''}
+    ${ext.mode === 'md' ? '<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>' : ''}
+    <script src="${CDN_PREFIX}/js/clip.js"></script>
+    <script src="${CDN_PREFIX}/js/app.js"></script>
     ${showPwPrompt ? '<script>passwdPrompt()</script>' : ''}
 </body>
 </html>
