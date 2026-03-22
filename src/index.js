@@ -33,6 +33,50 @@ router.get('/share/:md5', async (request) => {
     return returnPage('Page404', { lang, title: '404' })
 })
 
+router.get('/api/notes', async () => {
+    try {
+        let cursor = undefined
+        const notes = []
+
+        while (true) {
+            const result = await NOTES.list({
+                cursor,
+                limit: 1000,
+            })
+
+            result.keys.forEach(({ name, metadata = {} }) => {
+                notes.push({
+                    path: name,
+                    title: decodeURIComponent(name),
+                    updateAt: metadata.updateAt || 0,
+                    mode: metadata.mode || 'plain',
+                    share: !!metadata.share,
+                    locked: !!metadata.pw,
+                })
+            })
+
+            if (result.list_complete) {
+                break
+            }
+
+            cursor = result.cursor
+        }
+
+        notes.sort((left, right) => {
+            if ((right.updateAt || 0) !== (left.updateAt || 0)) {
+                return (right.updateAt || 0) - (left.updateAt || 0)
+            }
+            return left.title.localeCompare(right.title)
+        })
+
+        return returnJSON(0, notes)
+    } catch (error) {
+        console.error(error)
+    }
+
+    return returnJSON(10005, 'List notes failed!')
+})
+
 router.get('/:path', async (request) => {
     const lang = getI18n(request)
 
@@ -208,7 +252,7 @@ router.post('/:path', async request => {
 
 router.all('*', (request) => {
     const lang = getI18n(request)
-    returnPage('Page404', { lang, title: '404' })
+    return returnPage('Page404', { lang, title: '404' })
 })
 
 addEventListener('fetch', event => {
