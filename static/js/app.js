@@ -102,6 +102,89 @@ const configureMarked = () => {
     configureMarked.initialized = true
 }
 
+const renderMathFallback = node => {
+    if (!node || !window.katex) return
+
+    const textNodes = []
+    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, {
+        acceptNode(textNode) {
+            if (!textNode.textContent || !textNode.textContent.trim()) return NodeFilter.FILTER_REJECT
+
+            const parent = textNode.parentElement
+            if (!parent) return NodeFilter.FILTER_REJECT
+            if (parent.closest('pre, code, script, style, textarea, .katex')) return NodeFilter.FILTER_REJECT
+
+            return NodeFilter.FILTER_ACCEPT
+        },
+    })
+
+    while (walker.nextNode()) {
+        textNodes.push(walker.currentNode)
+    }
+
+    const pattern = /(\$\$([\s\S]+?)\$\$)|(\\\[([\s\S]+?)\\\])|(\\\(([\s\S]+?)\\\))|(\$([^$\n]+?)\$)/g
+
+    textNodes.forEach(textNode => {
+        const source = textNode.textContent
+        let lastIndex = 0
+        let matched = false
+        const fragment = document.createDocumentFragment()
+
+        source.replace(pattern, (match, blockMatch, blockExprA, bracketMatch, blockExprB, inlineParenMatch, inlineExprA, inlineMatch, inlineExprB, offset) => {
+            matched = true
+
+            if (offset > lastIndex) {
+                fragment.appendChild(document.createTextNode(source.slice(lastIndex, offset)))
+            }
+
+            const expression = blockExprA || blockExprB || inlineExprA || inlineExprB || ''
+            const displayMode = Boolean(blockMatch || bracketMatch)
+            const wrapper = document.createElement(displayMode ? 'div' : 'span')
+
+            try {
+                wrapper.innerHTML = window.katex.renderToString(expression.trim(), {
+                    throwOnError: false,
+                    displayMode,
+                })
+            } catch (error) {
+                wrapper.textContent = match
+            }
+
+            fragment.appendChild(wrapper)
+            lastIndex = offset + match.length
+            return match
+        })
+
+        if (!matched) return
+
+        if (lastIndex < source.length) {
+            fragment.appendChild(document.createTextNode(source.slice(lastIndex)))
+        }
+
+        textNode.parentNode.replaceChild(fragment, textNode)
+    })
+}
+
+const renderMath = node => {
+    if (!node) return
+
+    if (window.renderMathInElement) {
+        renderMathInElement(node, {
+            throwOnError: false,
+            delimiters: [
+                { left: '$$', right: '$$', display: true },
+                { left: '$', right: '$', display: false },
+                { left: '\\(', right: '\\)', display: false },
+                { left: '\\[', right: '\\]', display: true },
+            ],
+        })
+    }
+
+    if (!node.querySelector('.katex')) {
+        renderMathFallback(node)
+    }
+}
+
 const renderMarkdown = (node, text) => {
     if (node) {
         configureMarked()
@@ -109,17 +192,7 @@ const renderMarkdown = (node, text) => {
         const parseText = window.marked ? marked.parse(text) : text
         node.innerHTML = window.DOMPurify ? DOMPurify.sanitize(parseText) : parseText
 
-        if (window.renderMathInElement) {
-            renderMathInElement(node, {
-                throwOnError: false,
-                delimiters: [
-                    { left: '$$', right: '$$', display: true },
-                    { left: '$', right: '$', display: false },
-                    { left: '\\(', right: '\\)', display: false },
-                    { left: '\\[', right: '\\]', display: true },
-                ],
-            })
-        }
+        renderMath(node)
 
         if (window.hljs) {
             node.querySelectorAll('pre code').forEach(block => {
@@ -179,7 +252,7 @@ window.addEventListener('DOMContentLoaded', function () {
     const hasUnsavedChanges = () => !!$textarea && $textarea.value !== lastSavedValue
 
     const setSaveState = (state) => {
-        if (!$saveStatus || !$saveBtn) return
+        if (!$saveBtn) return
 
         const textMap = {
             saved: getI18n('saved'),
@@ -188,8 +261,11 @@ window.addEventListener('DOMContentLoaded', function () {
             error: getI18n('saveFailed'),
         }
 
-        $saveStatus.className = `save-status is-${state}`
-        $saveStatus.innerHTML = textMap[state]
+        if ($saveStatus) {
+            $saveStatus.className = `save-status is-${state}`
+            $saveStatus.innerHTML = textMap[state]
+        }
+
         $saveBtn.disabled = state === 'saving' || !hasUnsavedChanges()
     }
 

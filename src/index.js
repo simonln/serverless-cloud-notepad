@@ -7,6 +7,27 @@ import { SECRET, SUPPORTED_LANG } from './constant'
 
 // init
 const router = Router()
+const SHARE_CODE_LENGTH = 6
+
+const getShareCode = async (path, metadata = {}) => {
+    if (metadata.shareCode) {
+        const existedPath = await SHARE.get(metadata.shareCode)
+        if (!existedPath || existedPath === path) {
+            return metadata.shareCode
+        }
+    }
+
+    for (let i = 0; i < 20; i++) {
+        const shareCode = genRandomStr(SHARE_CODE_LENGTH)
+        const existedPath = await SHARE.get(shareCode)
+
+        if (!existedPath || existedPath === path) {
+            return shareCode
+        }
+    }
+
+    throw new Error('Generate share code failed!')
+}
 
 router.get('/', request => {
     const lang = getI18n(request)
@@ -22,10 +43,10 @@ router.get('/new', ({ url }) => {
     return Response.redirect(`${origin}/${newHash}`, 302)
 })
 
-router.get('/share/:md5', async (request) => {
+router.get('/share/:code', async (request) => {
     const lang = getI18n(request)
-    const { md5 } = request.params
-    const path = await SHARE.get(md5)
+    const { code } = request.params
+    const path = await SHARE.get(code)
 
     if (!!path) {
         const { value, metadata } = await queryNote(path)
@@ -191,21 +212,53 @@ router.post('/:path/setting', async request => {
 
         if (!metadata.pw || valid) {
             try {
+                const legacyShareCode = await MD5(path)
+                const nextMetadata = {
+                    ...metadata,
+                }
+
+                if (mode !== undefined) {
+                    nextMetadata.mode = mode
+                }
+
+                if (share !== undefined) {
+                    nextMetadata.share = share
+                }
+
+                let shareCode = metadata.shareCode
+                if (share) {
+                    shareCode = await getShareCode(path, metadata)
+                    nextMetadata.shareCode = shareCode
+                }
+
+                if (share === false) {
+                    delete nextMetadata.shareCode
+                }
+
                 await NOTES.put(path, value, {
-                    metadata: {
-                        ...metadata,
-                        ...mode !== undefined && { mode },
-                        ...share !== undefined && { share },
-                    },
+                    metadata: nextMetadata,
                 })
 
-                const md5 = await MD5(path)
                 if (share) {
-                    await SHARE.put(md5, path)
-                    return returnJSON(0, md5)
+                    await SHARE.put(shareCode, path)
+
+                    if (metadata.shareCode && metadata.shareCode !== shareCode) {
+                        await SHARE.delete(metadata.shareCode)
+                    }
+
+                    if (legacyShareCode !== shareCode) {
+                        await SHARE.delete(legacyShareCode)
+                    }
+
+                    return returnJSON(0, shareCode)
                 }
+
                 if (share === false) {
-                    await SHARE.delete(md5)
+                    if (metadata.shareCode) {
+                        await SHARE.delete(metadata.shareCode)
+                    }
+
+                    await SHARE.delete(legacyShareCode)
                 }
 
 
