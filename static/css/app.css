@@ -294,6 +294,7 @@ body.is-home {
     transform: translateY(-1px);
 
     display: flex;
+    align-items: stretch;
 
     background-color: #fdfeff;
     border: 1px solid #dcdde1;
@@ -308,8 +309,10 @@ body.is-home {
 }
 
 .stack .layer_1 .layer_2 .layer_3 .contents {
+    flex: 1 1 0;
+    min-width: 0;
     height: calc(100vh - 120px);
-    width: 100%;
+    width: auto;
     margin: 0;
     padding: 0 6px 0 0;
     border: none;
@@ -329,7 +332,9 @@ body.is-home {
 
 .divide-line {
     margin: 0 10px;
+    flex: 0 0 1px;
     width: 1px;
+    background: #e6ebf2;
 }
 
 .stack .layer_1 .layer_2 .layer_3 .contents.monospace {
@@ -386,6 +391,17 @@ body.is-home {
     background: #3a86ff;
     color: white;
     border: none;
+}
+
+.opt-home {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+}
+
+.opt-save {
+    margin-right: 8px;
 }
 
 .opt-button:disabled {
@@ -565,6 +581,7 @@ body.is-home {
 }
 
 #preview-md {
+    padding-left: 6px;
     white-space: normal;
     overflow-wrap: anywhere;
     background: #fff;

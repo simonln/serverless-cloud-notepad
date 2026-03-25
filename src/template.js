@@ -40,8 +40,8 @@ const FOOTER = ({ lang, isEdit, updateAt, pw, mode, share }) => `
     <div class="footer">
         ${isEdit ? `
             <div class="opt">
+                <a class="opt-button opt-home" href="/">${SUPPORTED_LANG[lang].home}</a>
                 <button class="opt-button opt-save">${SUPPORTED_LANG[lang].save}</button>
-                <span class="save-status is-saved">${SUPPORTED_LANG[lang].saved}</span>
                 <button class="opt-button opt-pw">${pw ? SUPPORTED_LANG[lang].changePW : SUPPORTED_LANG[lang].setPW}</button>
                 ${SWITCHER('Markdown', mode === 'md', 'opt-mode')}
                 ${SWITCHER(SUPPORTED_LANG[lang].share, share, 'opt-share')}
@@ -104,7 +104,7 @@ const HTML = ({ lang, title, content, ext = {}, tips, isEdit, showPwPrompt, body
         }
     </style>
     ${ext.mode === 'md' ? '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5.8.1/github-markdown.min.css" />' : ''}
-    ${ext.mode === 'md' ? '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css" />' : ''}
+    ${ext.mode === 'md' ? '<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css" />' : ''}
     ${ext.mode === 'md' ? '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />' : ''}
 </head>
 <body class="${bodyClass}">
@@ -130,12 +130,131 @@ const HTML = ({ lang, title, content, ext = {}, tips, isEdit, showPwPrompt, body
     ${FOOTER({ ...ext, isEdit, lang })}
     ${(ext.mode === 'md' || ext.share) ? `<script src="${CDN_PREFIX}/js/purify.min.js"></script>` : ''}
     ${ext.mode === 'md' ? `<script src="${CDN_PREFIX}/js/marked.min.js"></script>` : ''}
-    ${ext.mode === 'md' ? '<script src="https://cdn.jsdelivr.net/npm/highlight.js/lib/common.min.js"></script>' : ''}
-    ${ext.mode === 'md' ? '<link href="https://cdn.jsdelivr.net/npm/highlight.js/styles/github.min.css" rel="stylesheet">' : ''}
+    ${ext.mode === 'md' ? '<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>' : ''}
     ${ext.mode === 'md' ? '<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>' : ''}
     ${ext.mode === 'md' ? '<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>' : ''}
     <script src="${CDN_PREFIX}/js/clip.js"></script>
     <script src="${CDN_PREFIX}/js/app.js"></script>
+    ${ext.mode === 'md' ? `<script>
+        window.addEventListener('DOMContentLoaded', function () {
+            const textarea = document.querySelector('#contents')
+            const preview = document.querySelector('#preview-md')
+
+            if (!textarea || !preview || !window.marked) return
+
+            const renderMathFallback = root => {
+                if (!root || !window.katex) return
+
+                const nodes = []
+                const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+                    acceptNode(textNode) {
+                        if (!textNode.textContent || !textNode.textContent.trim()) return NodeFilter.FILTER_REJECT
+
+                        const parent = textNode.parentElement
+                        if (!parent) return NodeFilter.FILTER_REJECT
+                        if (parent.closest('pre, code, script, style, textarea, .katex')) return NodeFilter.FILTER_REJECT
+
+                        return NodeFilter.FILTER_ACCEPT
+                    },
+                })
+
+                while (walker.nextNode()) {
+                    nodes.push(walker.currentNode)
+                }
+
+                const replaceMathText = source => {
+                    let cursor = 0
+                    let matched = false
+                    const fragment = document.createDocumentFragment()
+
+                    while (cursor < source.length) {
+                        const blockStart = source.indexOf('$$', cursor)
+                        const inlineStart = source.indexOf('$', cursor)
+                        const useBlock = blockStart !== -1 && (inlineStart === -1 || blockStart <= inlineStart)
+                        const start = useBlock ? blockStart : inlineStart
+
+                        if (start === -1) {
+                            fragment.appendChild(document.createTextNode(source.slice(cursor)))
+                            break
+                        }
+
+                        const delimiter = useBlock ? '$$' : '$'
+                        const end = source.indexOf(delimiter, start + delimiter.length)
+
+                        if (end === -1) {
+                            fragment.appendChild(document.createTextNode(source.slice(cursor)))
+                            break
+                        }
+
+                        const expression = source.slice(start + delimiter.length, end).trim()
+                        if (!expression || (!useBlock && expression.includes(String.fromCharCode(10)))) {
+                            fragment.appendChild(document.createTextNode(source.slice(cursor, start + delimiter.length)))
+                            cursor = start + delimiter.length
+                            continue
+                        }
+
+                        if (start > cursor) {
+                            fragment.appendChild(document.createTextNode(source.slice(cursor, start)))
+                        }
+
+                        const wrapper = document.createElement(useBlock ? 'div' : 'span')
+
+                        try {
+                            wrapper.innerHTML = window.katex.renderToString(expression, {
+                                throwOnError: false,
+                                displayMode: useBlock,
+                            })
+                        } catch (error) {
+                            wrapper.textContent = source.slice(start, end + delimiter.length)
+                        }
+
+                        fragment.appendChild(wrapper)
+                        cursor = end + delimiter.length
+                        matched = true
+                    }
+
+                    return matched ? fragment : null
+                }
+
+                nodes.forEach(textNode => {
+                    const fragment = replaceMathText(textNode.textContent)
+                    if (!fragment) return
+                    textNode.parentNode.replaceChild(fragment, textNode)
+                })
+            }
+
+            const syncMarkdownPreview = () => {
+                const raw = textarea.value || ''
+                const html = window.marked ? window.marked.parse(raw) : raw
+                preview.innerHTML = window.DOMPurify ? window.DOMPurify.sanitize(html) : html
+
+                if (window.renderMathInElement) {
+                    window.renderMathInElement(preview, {
+                        throwOnError: false,
+                        delimiters: [
+                            { left: '$$', right: '$$', display: true },
+                            { left: '$', right: '$', display: false },
+                            { left: '\\(', right: '\\)', display: false },
+                            { left: '\\[', right: '\\]', display: true },
+                        ],
+                    })
+                }
+
+                if (!preview.querySelector('.katex')) {
+                    renderMathFallback(preview)
+                }
+
+                if (window.hljs) {
+                    preview.querySelectorAll('pre code').forEach(block => {
+                        window.hljs.highlightElement(block)
+                    })
+                }
+            }
+
+            syncMarkdownPreview()
+            textarea.addEventListener('input', syncMarkdownPreview)
+        })
+    </script>` : ''}
     ${showPwPrompt ? '<script>passwdPrompt()</script>' : ''}
 </body>
 </html>
