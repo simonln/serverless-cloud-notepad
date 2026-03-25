@@ -9,9 +9,9 @@ export const SECRET = SCN_SECRET
 // supported language
 export const SUPPORTED_LANG = {
     'en': {
+        home: 'Home',
         allNotes: 'All Notes',
         newNote: 'New Note',
-        notes: 'Notes',
         save: 'Save',
         saved: 'Saved',
         setPW: 'Set Password',
@@ -25,9 +25,9 @@ export const SUPPORTED_LANG = {
         tip404: '404, Nothing here',
     },
     'zh': {
+        home: '主页',
         allNotes: '所有笔记',
         newNote: '新建笔记',
-        notes: '笔记列表',
         save: '保存',
         saved: '已保存',
         setPW: '设置密码',
