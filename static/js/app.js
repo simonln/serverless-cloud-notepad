@@ -19,6 +19,9 @@ const SUPPORTED_LANG = {
         notesEmpty: 'No notes yet.',
         noteEncrypted: 'Encrypted',
         noteShared: 'Shared',
+        noteOpen: 'Open',
+        leaveDiscardConfirm: 'This note has unsaved changes. Please save manually if needed. Click OK to discard changes and continue, or Cancel to stay on this page.',
+        beforeUnloadPrompt: 'You have unsaved changes.',
     },
     'zh': {
         err: '出错了',
@@ -38,6 +41,9 @@ const SUPPORTED_LANG = {
         notesEmpty: '还没有任何笔记',
         noteEncrypted: '已加密',
         noteShared: '已分享',
+        noteOpen: '打开',
+        leaveDiscardConfirm: '当前笔记有未保存内容，如需保留请先手动保存。点击“确定”放弃更改并继续，点击“取消”则留在当前页面。',
+        beforeUnloadPrompt: '当前有未保存内容。',
     }
 }
 
@@ -49,21 +55,6 @@ const getI18n = key => {
 
 const errHandle = (err) => {
     alert(`${getI18n('err')}: ${err}`)
-}
-
-const debounce = (func, delay) => {
-    let tid = null
-
-    return (...arg) => {
-        if (tid) {
-            window.clearTimeout(tid)
-        }
-
-        tid = setTimeout(() => {
-            func(...arg)
-            tid = null
-        }, delay)
-    }
 }
 
 const passwdPrompt = () => {
@@ -97,21 +88,26 @@ const passwdPrompt = () => {
 
 const renderPlain = (node, text) => {
     if (node) {
-        node.innerHTML = DOMPurify.sanitize(text)
+        node.innerHTML = window.DOMPurify ? DOMPurify.sanitize(text) : text
     }
+}
+
+const configureMarked = () => {
+    if (!window.marked || configureMarked.initialized) return
+
+    marked.setOptions({
+        gfm: true,
+        breaks: false,
+    })
+    configureMarked.initialized = true
 }
 
 const renderMarkdown = (node, text) => {
     if (node) {
-        if (window.marked) {
-            marked.setOptions({
-                gfm: true,
-                breaks: true,
-            })
-        }
+        configureMarked()
 
         const parseText = window.marked ? marked.parse(text) : text
-        node.innerHTML = DOMPurify.sanitize(parseText)
+        node.innerHTML = window.DOMPurify ? DOMPurify.sanitize(parseText) : parseText
 
         if (window.renderMathInElement) {
             renderMathInElement(node, {
@@ -133,7 +129,7 @@ const renderMarkdown = (node, text) => {
     }
 }
 
-const escapeHTML = text => text
+const escapeHTML = text => String(text || '')
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
@@ -158,10 +154,8 @@ window.addEventListener('DOMContentLoaded', function () {
     const $loading = document.querySelector('#loading')
     const $saveBtn = document.querySelector('.opt-save')
     const $saveStatus = document.querySelector('.save-status')
-    const $notesBtn = document.querySelector('.opt-notes')
-    const $notesSidebar = document.querySelector('#notes-sidebar')
-    const $notesList = document.querySelector('#notes-list')
-    const $notesEmpty = document.querySelector('.notes-list-empty')
+    const $homeNotesList = document.querySelector('#home-notes-list')
+    const $homeNotesEmpty = document.querySelector('#home-notes-empty')
     const $pwBtn = document.querySelector('.opt-pw')
     const $modeBtn = document.querySelector('.opt-mode > input')
     const $shareBtn = document.querySelector('.opt-share > input')
@@ -171,13 +165,18 @@ window.addEventListener('DOMContentLoaded', function () {
     const $closeBtn = document.querySelector('.share-modal .close-btn')
     const $copyBtn = document.querySelector('.share-modal .opt-button')
     const $shareInput = document.querySelector('.share-modal input')
+    const getTextareaValue = () => $textarea ? $textarea.value : ''
 
-    renderPlain($previewPlain, $textarea.value)
-    renderMarkdown($previewMd, $textarea.value)
+    if ($textarea) {
+        renderPlain($previewPlain, getTextareaValue())
+        renderMarkdown($previewMd, getTextareaValue())
+    }
 
-    let lastSavedValue = $textarea ? $textarea.value : ''
+    let lastSavedValue = getTextareaValue()
     let pendingSave = false
     let saving = false
+
+    const hasUnsavedChanges = () => !!$textarea && $textarea.value !== lastSavedValue
 
     const setSaveState = (state) => {
         if (!$saveStatus || !$saveBtn) return
@@ -191,44 +190,56 @@ window.addEventListener('DOMContentLoaded', function () {
 
         $saveStatus.className = `save-status is-${state}`
         $saveStatus.innerHTML = textMap[state]
-        $saveBtn.disabled = state === 'saving' || (!$textarea || $textarea.value === lastSavedValue)
+        $saveBtn.disabled = state === 'saving' || !hasUnsavedChanges()
     }
 
-    const renderNotes = (notes) => {
-        if (!$notesList || !$notesEmpty) return
+    const createNotesMarkup = (note) => {
+        const currentPath = window.location.pathname.replace(/^\//, '')
+        const tags = [
+            note.locked ? `<span class="notes-badge is-locked">${getI18n('noteEncrypted')}</span>` : '',
+            note.share ? `<span class="notes-badge is-shared">${getI18n('noteShared')}</span>` : '',
+        ].filter(Boolean).join('')
+
+        return `
+            <a class="home-note-card ${note.path === currentPath ? 'is-active' : ''}" href="/${note.path}">
+                <div class="home-note-card-header">
+                    <div class="home-note-card-title">${escapeHTML(note.title)}</div>
+                    <span class="home-note-card-open">${getI18n('noteOpen')}</span>
+                </div>
+                <div class="home-note-card-path">/${escapeHTML(note.path)}</div>
+                <div class="home-note-card-meta">
+                    <span>${formatRelativeTime(note.updateAt)}</span>
+                    <span class="notes-item-tags">${tags}</span>
+                </div>
+            </a>
+        `
+    }
+
+    const renderNotesBlock = (container, empty, notes) => {
+        if (!container || !empty) return
 
         if (!notes.length) {
-            $notesList.innerHTML = ''
-            $notesEmpty.innerHTML = getI18n('notesEmpty')
-            $notesEmpty.style.display = 'block'
+            container.innerHTML = ''
+            empty.innerHTML = getI18n('notesEmpty')
+            empty.style.display = 'block'
             return
         }
 
-        const currentPath = window.location.pathname.replace(/^\//, '')
-        $notesEmpty.style.display = 'none'
-        $notesList.innerHTML = notes.map(note => {
-            const tags = [
-                note.locked ? `<span class="notes-badge is-locked">${getI18n('noteEncrypted')}</span>` : '',
-                note.share ? `<span class="notes-badge is-shared">${getI18n('noteShared')}</span>` : '',
-            ].filter(Boolean).join('')
+        empty.style.display = 'none'
+        container.innerHTML = notes.map(note => createNotesMarkup(note)).join('')
+    }
 
-            return `
-                <a class="notes-item ${note.path === currentPath ? 'is-active' : ''}" href="/${note.path}">
-                    <div class="notes-item-title">${escapeHTML(note.title)}</div>
-                    <div class="notes-item-meta">
-                        <span>${formatRelativeTime(note.updateAt)}</span>
-                        <span class="notes-item-tags">${tags}</span>
-                    </div>
-                </a>
-            `
-        }).join('')
+    const renderNotes = (notes) => {
+        renderNotesBlock($homeNotesList, $homeNotesEmpty, notes)
     }
 
     const fetchNotes = () => {
-        if (!$notesList || !$notesEmpty) return Promise.resolve()
+        if (!$homeNotesList) return Promise.resolve()
 
-        $notesEmpty.innerHTML = getI18n('notesLoading')
-        $notesEmpty.style.display = 'block'
+        if ($homeNotesEmpty) {
+            $homeNotesEmpty.innerHTML = getI18n('notesLoading')
+            $homeNotesEmpty.style.display = 'block'
+        }
 
         return window.fetch('/api/notes')
             .then(res => res.json())
@@ -239,22 +250,22 @@ window.addEventListener('DOMContentLoaded', function () {
                 renderNotes(res.data || [])
             })
             .catch(err => {
-                $notesList.innerHTML = ''
-                $notesEmpty.innerHTML = getI18n('notesLoadFailed')
+                if ($homeNotesList) $homeNotesList.innerHTML = ''
+                if ($homeNotesEmpty) $homeNotesEmpty.innerHTML = getI18n('notesLoadFailed')
                 errHandle(err)
             })
     }
 
     const saveContent = () => {
-        if (!$textarea) return Promise.resolve()
+        if (!$textarea) return Promise.resolve(true)
         if (saving) {
             pendingSave = true
-            return Promise.resolve()
+            return Promise.resolve(false)
         }
 
-        if ($textarea.value === lastSavedValue) {
+        if (!hasUnsavedChanges()) {
             setSaveState('saved')
-            return Promise.resolve()
+            return Promise.resolve(true)
         }
 
         saving = true
@@ -263,7 +274,7 @@ window.addEventListener('DOMContentLoaded', function () {
         $loading.style.display = 'inline-block'
 
         const data = {
-            t: $textarea.value,
+            t: getTextareaValue(),
         }
 
         return window.fetch('', {
@@ -279,13 +290,14 @@ window.addEventListener('DOMContentLoaded', function () {
                     throw new Error(res.msg)
                 }
 
-                lastSavedValue = $textarea.value
+                lastSavedValue = getTextareaValue()
                 setSaveState('saved')
-                return fetchNotes()
+                return fetchNotes().then(() => true)
             })
             .catch(err => {
                 setSaveState('error')
                 errHandle(err)
+                return false
             })
             .finally(() => {
                 saving = false
@@ -298,28 +310,57 @@ window.addEventListener('DOMContentLoaded', function () {
             })
     }
 
-    const autoSave = debounce(saveContent, 1000)
+    const promptPendingChanges = () => {
+        if (!hasUnsavedChanges()) return Promise.resolve(true)
+
+        return Promise.resolve(window.confirm(getI18n('leaveDiscardConfirm')))
+    }
 
     if ($textarea) {
         setSaveState('saved')
         fetchNotes()
 
         $textarea.oninput = function () {
-            renderMarkdown($previewMd, $textarea.value)
+            renderPlain($previewPlain, getTextareaValue())
+            renderMarkdown($previewMd, getTextareaValue())
             setSaveState('dirty')
-            autoSave()
         }
+
+        window.addEventListener('beforeunload', function (event) {
+            if (!hasUnsavedChanges()) return
+
+            event.preventDefault()
+            event.returnValue = getI18n('beforeUnloadPrompt')
+            return getI18n('beforeUnloadPrompt')
+        })
+    } else {
+        fetchNotes()
     }
+
+    document.addEventListener('click', function (event) {
+        if (!hasUnsavedChanges()) return
+        if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+
+        const link = event.target.closest('a[href]')
+        if (!link || link.target === '_blank' || link.hasAttribute('download')) return
+
+        const href = link.getAttribute('href')
+        if (!href || href.startsWith('#') || href.startsWith('javascript:')) return
+
+        const targetUrl = new URL(link.href, window.location.origin)
+        if (targetUrl.href === window.location.href) return
+
+        event.preventDefault()
+        promptPendingChanges().then(shouldContinue => {
+            if (shouldContinue) {
+                window.location.href = targetUrl.href
+            }
+        })
+    })
 
     if ($saveBtn) {
         $saveBtn.onclick = function () {
             saveContent()
-        }
-    }
-
-    if ($notesBtn && $notesSidebar) {
-        $notesBtn.onclick = function () {
-            $notesSidebar.classList.toggle('is-collapsed')
         }
     }
 
@@ -351,27 +392,38 @@ window.addEventListener('DOMContentLoaded', function () {
     }
 
     if ($modeBtn) {
-        $modeBtn.onclick = function (e) {
+        $modeBtn.onchange = function (e) {
             const isMd = e.target.checked
             const path = window.location.pathname
-            window.fetch(`${path}/setting`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    mode: isMd ? 'md' : 'plain',
-                }),
-            })
-                .then(res => res.json())
-                .then(res => {
-                    if (res.err !== 0) {
-                        return errHandle(res.msg)
-                    }
+            promptPendingChanges().then(shouldContinue => {
+                if (!shouldContinue) {
+                    e.target.checked = !isMd
+                    return
+                }
 
-                    window.location.reload()
+                window.fetch(`${path}/setting`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        mode: isMd ? 'md' : 'plain',
+                    }),
                 })
-                .catch(err => errHandle(err))
+                    .then(res => res.json())
+                    .then(res => {
+                        if (res.err !== 0) {
+                            e.target.checked = !isMd
+                            return errHandle(res.msg)
+                        }
+
+                        window.location.reload()
+                    })
+                    .catch(err => {
+                        e.target.checked = !isMd
+                        errHandle(err)
+                    })
+            })
         }
     }
 
@@ -398,8 +450,10 @@ window.addEventListener('DOMContentLoaded', function () {
                         const origin = window.location.origin
                         const url = `${origin}/share/${res.data}`
                         // show modal
-                        $shareInput.value = url
-                        $shareModal.style.display = 'block'
+                        if ($shareInput && $shareModal) {
+                            $shareInput.value = url
+                            $shareModal.style.display = 'block'
+                        }
                     }
 
                     fetchNotes()
@@ -408,7 +462,7 @@ window.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    if ($shareModal) {
+    if ($shareModal && $closeBtn && $copyBtn && $shareInput) {
         $closeBtn.onclick = function () {
             $shareModal.style.display = 'none'
 

@@ -11,17 +11,30 @@ const SWITCHER = (text, open, className = '') => `
   <span class="slider round"></span>
 </label>
 `
-const NOTES_PANEL = ({ lang }) => `
-    <aside class="notes-sidebar" id="notes-sidebar">
-        <div class="notes-sidebar-header">
-            <div class="notes-sidebar-title">${SUPPORTED_LANG[lang].allNotes}</div>
-            <a class="opt-button notes-new-link" href="/">${SUPPORTED_LANG[lang].newNote}</a>
-        </div>
-        <div class="notes-sidebar-body">
-            <div class="notes-list-empty">${SUPPORTED_LANG[lang].emptyNotes}</div>
-            <div class="notes-list" id="notes-list"></div>
-        </div>
-    </aside>
+const HOME_PANEL = ({ lang }) => `
+    <main class="home-page">
+        <textarea id="contents" class="contents hide home-shadow-textarea" aria-hidden="true"></textarea>
+        <section class="home-hero stack">
+            <div class="layer_1">
+                <div class="layer_2">
+                    <div class="layer_3 home-hero-content">
+                        <div>
+                            <h1 class="home-title">${SUPPORTED_LANG[lang].home}</h1>
+                            <p class="home-subtitle">${SUPPORTED_LANG[lang].allNotes}</p>
+                        </div>
+                        <a class="opt-button home-create-link" href="/new">${SUPPORTED_LANG[lang].newNote}</a>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <section class="home-notes-section">
+            <div class="home-section-header">
+                <h2>${SUPPORTED_LANG[lang].allNotes}</h2>
+            </div>
+            <div class="notes-list-empty home-notes-empty" id="home-notes-empty">${SUPPORTED_LANG[lang].emptyNotes}</div>
+            <div class="home-notes-grid" id="home-notes-list"></div>
+        </section>
+    </main>
 `
 const FOOTER = ({ lang, isEdit, updateAt, pw, mode, share }) => `
     <div class="footer">
@@ -29,7 +42,6 @@ const FOOTER = ({ lang, isEdit, updateAt, pw, mode, share }) => `
             <div class="opt">
                 <button class="opt-button opt-save">${SUPPORTED_LANG[lang].save}</button>
                 <span class="save-status is-saved">${SUPPORTED_LANG[lang].saved}</span>
-                <button class="opt-button opt-notes">${SUPPORTED_LANG[lang].notes}</button>
                 <button class="opt-button opt-pw">${pw ? SUPPORTED_LANG[lang].changePW : SUPPORTED_LANG[lang].setPW}</button>
                 ${SWITCHER('Markdown', mode === 'md', 'opt-mode')}
                 ${SWITCHER(SUPPORTED_LANG[lang].share, share, 'opt-share')}
@@ -54,7 +66,7 @@ const MODAL = lang => `
     </div>
 </div>
 `
-const HTML = ({ lang, title, content, ext = {}, tips, isEdit, showPwPrompt }) => `
+const HTML = ({ lang, title, content, ext = {}, tips, isEdit, showPwPrompt, bodyClass = '', bodyContent }) => `
 <!DOCTYPE html>
 <html>
 <head>
@@ -64,12 +76,40 @@ const HTML = ({ lang, title, content, ext = {}, tips, isEdit, showPwPrompt }) =>
     <title>${title} — Cloud Notepad</title>
     <link href="${CDN_PREFIX}/favicon.ico" rel="shortcut icon" type="image/ico" />
     <link href="${CDN_PREFIX}/css/app.css" rel="stylesheet" media="screen" />
+    <style>
+        body.is-home { color: #253858; }
+        .home-shadow-textarea { display: none !important; }
+        .home-page { padding: 30px 30px 0; }
+        .home-hero-content { align-items: center; justify-content: space-between; gap: 20px; }
+        .home-title { margin: 0 0 8px; font-size: 32px; line-height: 1.2; color: #172b4d; }
+        .home-subtitle { margin: 0; color: #5e6c84; font-size: 16px; }
+        .home-create-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 120px;
+            height: 36px;
+            padding: 0 18px;
+            line-height: 1;
+            border-radius: 999px;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+        .home-notes-section { padding-bottom: 88px; }
+        .home-section-header h2 { margin: 0; color: #172b4d; font-size: 22px; }
+        .home-notes-empty { padding-left: 0; color: #7a869a; }
+        @media (max-width: 768px) {
+            .home-page { padding: 20px 20px 0; }
+            .home-hero-content { flex-direction: column; align-items: flex-start; }
+        }
+    </style>
+    ${ext.mode === 'md' ? '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5.8.1/github-markdown.min.css" />' : ''}
     ${ext.mode === 'md' ? '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css" />' : ''}
     ${ext.mode === 'md' ? '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />' : ''}
 </head>
-<body>
+<body class="${bodyClass}">
+    ${bodyContent || `
     <div class="note-container ${isEdit ? 'is-edit' : ''}">
-        ${isEdit ? NOTES_PANEL({ lang }) : ''}
         <div class="editor-wrapper">
             <div class="stack">
                 <div class="layer_1">
@@ -78,19 +118,20 @@ const HTML = ({ lang, title, content, ext = {}, tips, isEdit, showPwPrompt }) =>
                             ${tips ? `<div class="tips">${tips}</div>` : ''}
                             <textarea id="contents" class="contents ${isEdit ? '' : 'hide'}" spellcheck="true" placeholder="${SUPPORTED_LANG[lang].emptyPH}">${content}</textarea>
                             ${(isEdit && ext.mode === 'md') ? '<div class="divide-line"></div>' : ''}
-                            ${tips || (isEdit && ext.mode !== 'md') ? '' : `<div id="preview-${ext.mode || 'plain'}" class="contents markdown-preview"></div>`}
+                            ${tips || (isEdit && ext.mode !== 'md') ? '' : `<div id="preview-${ext.mode || 'plain'}" class="contents markdown-preview ${ext.mode === 'md' ? 'markdown-body' : ''}"></div>`}
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
+    </div>`}
     <div id="loading"></div>
     ${MODAL(lang)}
     ${FOOTER({ ...ext, isEdit, lang })}
     ${(ext.mode === 'md' || ext.share) ? `<script src="${CDN_PREFIX}/js/purify.min.js"></script>` : ''}
     ${ext.mode === 'md' ? `<script src="${CDN_PREFIX}/js/marked.min.js"></script>` : ''}
-    ${ext.mode === 'md' ? '<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/highlight.min.js"></script>' : ''}
+    ${ext.mode === 'md' ? '<script src="https://cdn.jsdelivr.net/npm/highlight.js/lib/common.min.js"></script>' : ''}
+    ${ext.mode === 'md' ? '<link href="https://cdn.jsdelivr.net/npm/highlight.js/styles/github.min.css" rel="stylesheet">' : ''}
     ${ext.mode === 'md' ? '<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>' : ''}
     ${ext.mode === 'md' ? '<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>' : ''}
     <script src="${CDN_PREFIX}/js/clip.js"></script>
@@ -100,6 +141,7 @@ const HTML = ({ lang, title, content, ext = {}, tips, isEdit, showPwPrompt }) =>
 </html>
 `
 
+export const Home = data => HTML({ bodyClass: 'is-home', bodyContent: HOME_PANEL(data), ...data })
 export const Edit = data => HTML({ isEdit: true, ...data })
 export const Share = data => HTML(data)
 export const NeedPasswd = data => HTML({ tips: SUPPORTED_LANG[data.lang].tipEncrypt, showPwPrompt: true, ...data })

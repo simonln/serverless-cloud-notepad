@@ -3,15 +3,23 @@ import { Router } from 'itty-router'
 import Cookies from 'cookie'
 import jwt from '@tsndr/cloudflare-worker-jwt'
 import { queryNote, MD5, checkAuth, genRandomStr, returnPage, returnJSON, saltPw, getI18n } from './helper'
-import { SECRET } from './constant'
+import { SECRET, SUPPORTED_LANG } from './constant'
 
 // init
 const router = Router()
 
-router.get('/', ({ url }) => {
+router.get('/', request => {
+    const lang = getI18n(request)
+    return returnPage('Home', {
+        lang,
+        title: SUPPORTED_LANG[lang].home,
+    })
+})
+
+router.get('/new', ({ url }) => {
     const newHash = genRandomStr(3)
-    // redirect to new page
-    return Response.redirect(`${url}${newHash}`, 302)
+    const { origin } = new URL(url)
+    return Response.redirect(`${origin}/${newHash}`, 302)
 })
 
 router.get('/share/:md5', async (request) => {
